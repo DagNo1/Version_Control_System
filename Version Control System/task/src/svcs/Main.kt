@@ -1,16 +1,22 @@
 package svcs
 import java.io.File
+import kotlin.system.exitProcess
 
 var userName: String = ""
-var addedFilesList = mutableListOf<String>()
+var trackedFilesList = mutableListOf<String>()
 val vcs = File("vcs")
+val commitFolder = File("vcs/commits")
 val configFile = File("vcs/config.txt")
 val indexFile = File("vcs/index.txt")
+val logFile = File("vcs/log.txt")
 
 fun main(args: Array<String>) {
     if (!vcs.exists()) vcs.mkdir()
+    if (!commitFolder.exists()) commitFolder.mkdir()
     if (!configFile.exists()) configFile.createNewFile()
     if (!indexFile.exists()) indexFile.createNewFile()
+    if (!logFile.exists()) logFile.createNewFile()
+    trackedFilesList.addAll(indexFile.readLines().toMutableList())
     val help = """
                 These are SVCS commands:
                 config     Get and set a username.
@@ -23,8 +29,8 @@ fun main(args: Array<String>) {
         null -> println(help)
         "config" -> config(args)
         "add" -> add(args)
-        "log" -> println("Show commit logs.")
-        "commit" -> println("Save changes.")
+        "log" -> log()
+        "commit" -> commit(args)
         "checkout" -> println("Restore a file.")
         else -> println("'${args.first()}' is not a SVCS command.")
     }
@@ -48,18 +54,61 @@ fun add(args: Array<String>){
     when {
         args.size == 1 && (indexFile.readText().isEmpty()) -> println("Add a file to the index.")
         args.size == 1 -> {
-            addedFilesList.addAll(indexFile.readText().split(" ").toMutableList())
             println("Tracked files:")
-            for (fileName in addedFilesList) println(fileName)
+            for (fileName in trackedFilesList) println(fileName)
         }
         args.size == 2 -> {
             if (File("./${args[1]}").exists()) {
-                indexFile.appendText(args[1] + " ")
+                indexFile.appendText(args[1] + "\n")
                 println("The file \'${args[1]}\' is tracked.")
-                addedFilesList.add(args[1])
+                trackedFilesList.add(args[1])
                 return
             }
             println("Can't find \'${args[1]}\'.")
         }
     }
+}
+fun commit(args: Array<String>) {
+    val msg = try { args[1] } catch (e:IndexOutOfBoundsException) { "" }
+    if (msg == "") {
+        println("Message was not passed.")
+        exitProcess(0)
+    }
+    val commitHash = indexFile.readText().hashCode().toString() + msg.hashCode().toString()
+    val commitHashDirectory = "vcs/commits/$commitHash"
+    if ( indexFile.readText() == "" || filesAreNotChanged()) {
+        println("Nothing to commit.")
+        exitProcess(0)
+    }
+    File(commitHashDirectory).mkdir()
+    trackedFilesList.forEach {
+        val content = File("./$it").readText()
+        File("$commitHashDirectory/$it").createNewFile()
+        File("$commitHashDirectory/$it").writeText(content)
+    }
+    logFile.writeText("commit $commitHash\nAuthor: ${configFile.readText()}\n$msg" +
+            if (logFile.readText() == "") "" else "\n${logFile.readText()}")
+    println("Changes are committed.")
+}
+fun log() {
+    if (logFile.readText() == "") {
+        println("No commits yet.")
+        exitProcess(0)
+    }
+    println(logFile.readText())
+}
+fun filesAreNotChanged(): Boolean {
+    if (logFile.readText() == "") return false
+    val lastCommit = logFile.readLines()[0].substringAfterLast(" ")
+    val listOfFilesFromLastCommit = File("vcs/commits/$lastCommit").listFiles() ?: return false
+    val listOfFileNames = listOfFilesFromLastCommit.map { it.name }.sorted()
+    if (trackedFilesList.sorted() != listOfFileNames) return false
+    trackedFilesList.forEach {
+        try {
+            if (File("./$it").readText() != File("vcs/commits/$lastCommit/$it").readText()) return false
+        } catch (e: Exception) {
+            return false
+        }
+    }
+    return true
 }
