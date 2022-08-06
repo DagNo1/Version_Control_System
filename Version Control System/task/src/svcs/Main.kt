@@ -31,10 +31,9 @@ fun main(args: Array<String>) {
         "add" -> add(args)
         "log" -> log()
         "commit" -> commit(args)
-        "checkout" -> println("Restore a file.")
+        "checkout" -> checkOut(args)
         else -> println("'${args.first()}' is not a SVCS command.")
     }
-
 }
 fun config(args: Array<String>){
     when {
@@ -69,11 +68,9 @@ fun add(args: Array<String>){
     }
 }
 fun commit(args: Array<String>) {
-    val msg = try { args[1] } catch (e:IndexOutOfBoundsException) { "" }
-    if (msg == "") {
+    val msg = try { args[1] } catch (e:IndexOutOfBoundsException) {
         println("Message was not passed.")
-        exitProcess(0)
-    }
+        exitProcess(0) }
     val commitHash = indexFile.readText().hashCode().toString() + msg.hashCode().toString()
     val commitHashDirectory = "vcs/commits/$commitHash"
     if ( indexFile.readText() == "" || filesAreNotChanged()) {
@@ -105,10 +102,34 @@ fun filesAreNotChanged(): Boolean {
     if (trackedFilesList.sorted() != listOfFileNames) return false
     trackedFilesList.forEach {
         try {
-            if (File("./$it").readText() != File("vcs/commits/$lastCommit/$it").readText()) return false
+            if (File("./$it").readText() != File("vcs/commits/$lastCommit/$it")
+                    .readText()) return false
         } catch (e: Exception) {
             return false
         }
     }
     return true
+}
+fun checkOut(args: Array<String>) {
+    val commit = try { args[1] } catch (e:IndexOutOfBoundsException) {
+        println("Commit id was not passed.")
+        exitProcess(0) }
+    if(logFile.readText().isEmpty()) {
+        println("here2")
+        println("Commit does not exist.")
+        exitProcess(0)
+    }
+    val commitHashes = File("vcs/commits").walkTopDown().filter { it.isDirectory }
+        .map { it.toString().substringAfterLast("\\")}.toList()
+    if (commit !in commitHashes) {
+        println("Commit does not exist.")
+        if(commit == "1910279870-303977273") println(commitHashes)
+        exitProcess(0)
+    }
+    val wantedCommit = File("vcs/commits/$commit").listFiles() ?: return
+    val wantedCommitNames = wantedCommit.map { it.name }
+    wantedCommitNames.forEach {
+        File("vcs/commits/$commit/$it").copyTo(File(it), overwrite = true)
+    }
+    println("Switched to commit $commit.")
 }
